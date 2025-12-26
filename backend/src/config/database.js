@@ -10,9 +10,7 @@ const dbConfig = {
     port: process.env.DB_PORT || 3306,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0,
-    acquireTimeout: 60000,
-    timeout: 60000
+    queueLimit: 0
 };
 
 // Create connection pool

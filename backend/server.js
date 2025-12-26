@@ -49,6 +49,28 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Request logging middleware for function tracking
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`\n🔥 [${timestamp}] ${req.method} ${req.url}`);
+    console.log(`📝 Headers: ${JSON.stringify(req.headers, null, 2)}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log(`📦 Body: ${JSON.stringify(req.body, null, 2)}`);
+    }
+    
+    // Track response
+    const originalSend = res.send;
+    res.send = function(data) {
+        console.log(`📤 Response Status: ${res.statusCode}`);
+        console.log(`📤 Response Data: ${data}`);
+        console.log(`⏱️  Request completed in ${Date.now() - req.startTime}ms\n`);
+        originalSend.call(this, data);
+    };
+    
+    req.startTime = Date.now();
+    next();
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({

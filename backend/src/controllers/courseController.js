@@ -17,6 +17,15 @@ const getAllCourses = async (req, res) => {
         const { page, limit, sortBy, sortOrder } = value;
         const offset = (page - 1) * limit;
 
+        // Map sortBy to actual column names
+        const sortByMap = {
+            'name': 'course_name',
+            'course_name': 'course_name',
+            'created_at': 'created_at',
+            'email': 'created_at' // fallback for invalid field
+        };
+        const actualSortBy = sortByMap[sortBy] || 'created_at';
+
         // Build search conditions
         const searchConditions = [];
         const searchParams = [];
@@ -51,17 +60,27 @@ const getAllCourses = async (req, res) => {
         // Get courses with student count
         const coursesQuery = `
             SELECT 
-                c.*,
+                c.course_id,
+                c.course_name,
+                c.course_code,
+                c.course_duration,
+                c.course_description,
+                c.max_students,
+                c.created_at,
+                c.updated_at,
                 COUNT(s.student_id) as enrolled_students
             FROM courses c
             LEFT JOIN students s ON c.course_id = s.course_id AND s.status = 'active'
             ${whereClause}
-            GROUP BY c.course_id
-            ORDER BY ${sortBy === 'course_name' ? 'c.course_name' : 'c.' + sortBy} ${sortOrder}
-            LIMIT ? OFFSET ?
+            GROUP BY c.course_id, c.course_name, c.course_code, c.course_duration, c.course_description, c.max_students, c.created_at, c.updated_at
+            ORDER BY c.${actualSortBy} ${sortOrder}
+            LIMIT ${limit} OFFSET ${offset}
         `;
 
-        const courses = await executeQuery(coursesQuery, [...searchParams, limit, offset]);
+        console.log('📝 Courses Query:', coursesQuery);
+        console.log('📊 Query Params:', searchParams);
+
+        const courses = await executeQuery(coursesQuery, searchParams);
 
         res.json({
             success: true,
@@ -89,10 +108,13 @@ const getAllCourses = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Get all courses error:', error);
+        console.error('❌ Get all courses error:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
         res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: 'Internal server error',
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 };
@@ -180,10 +202,10 @@ const createCourse = async (req, res) => {
         `;
 
         const result = await executeQuery(insertQuery, [
-            courseName, 
-            courseCode, 
-            courseDuration, 
-            courseDescription || null, 
+            courseName,
+            courseCode,
+            courseDuration,
+            courseDescription || null,
             maxStudents || 50
         ]);
 
@@ -247,7 +269,7 @@ const updateCourse = async (req, res) => {
         // Check if course code already exists (for other courses)
         if (courseCode) {
             const duplicateCourse = await executeQuery(
-                'SELECT course_id FROM courses WHERE course_code = ? AND course_id != ?', 
+                'SELECT course_id FROM courses WHERE course_code = ? AND course_id != ?',
                 [courseCode, courseId]
             );
             if (duplicateCourse.length > 0) {
@@ -351,7 +373,7 @@ const deleteCourse = async (req, res) => {
 
         // Check if course has enrolled students
         const enrolledStudents = await executeQuery(
-            'SELECT COUNT(*) as count FROM students WHERE course_id = ?', 
+            'SELECT COUNT(*) as count FROM students WHERE course_id = ?',
             [courseId]
         );
 
@@ -424,7 +446,7 @@ const getCourseStatistics = async (req, res) => {
                 averageGpa: parseFloat(course.average_gpa).toFixed(2),
                 firstEnrollment: course.first_enrollment,
                 latestEnrollment: course.latest_enrollment,
-                utilizationRate: course.max_students > 0 ? 
+                utilizationRate: course.max_students > 0 ?
                     ((course.enrolled_students / course.max_students) * 100).toFixed(1) + '%' : '0%'
             }))
         });

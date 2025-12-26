@@ -56,6 +56,15 @@ const getAllStudents = async (req, res) => {
         const total = totalResult.total;
 
         // Get students with pagination
+        // Map sortBy to avoid SQL injection
+        const sortByMap = {
+            'name': 'u.last_name',
+            'course_name': 'c.course_name',
+            'created_at': 's.created_at',
+            'email': 'u.email'
+        };
+        const actualSortBy = sortByMap[sortBy] || 's.created_at';
+
         const studentsQuery = `
             SELECT 
                 s.student_id,
@@ -77,11 +86,11 @@ const getAllStudents = async (req, res) => {
             JOIN users u ON s.user_id = u.user_id
             LEFT JOIN courses c ON s.course_id = c.course_id
             ${whereClause}
-            ORDER BY ${sortBy === 'name' ? 'u.last_name' : sortBy === 'course_name' ? 'c.course_name' : 's.' + sortBy} ${sortOrder}
-            LIMIT ? OFFSET ?
+            ORDER BY ${actualSortBy} ${sortOrder}
+            LIMIT ${limit} OFFSET ${offset}
         `;
 
-        const students = await executeQuery(studentsQuery, [...searchParams, limit, offset]);
+        const students = await executeQuery(studentsQuery, searchParams);
 
         res.json({
             success: true,
@@ -219,7 +228,7 @@ const updateStudent = async (req, res) => {
 
         // Check if student exists
         const existingStudent = await executeQuery(
-            'SELECT user_id FROM students WHERE student_id = ?', 
+            'SELECT user_id FROM students WHERE student_id = ?',
             [studentId]
         );
 
@@ -251,12 +260,12 @@ const updateStudent = async (req, res) => {
         } catch (error) {
             // Fallback to individual updates if stored procedure fails
             console.log('Stored procedure failed, using fallback method:', error.message);
-            
+
             // Update user info
             if (firstName || lastName) {
                 const updateFields = [];
                 const updateParams = [];
-                
+
                 if (firstName) {
                     updateFields.push('first_name = ?');
                     updateParams.push(firstName);
@@ -265,9 +274,9 @@ const updateStudent = async (req, res) => {
                     updateFields.push('last_name = ?');
                     updateParams.push(lastName);
                 }
-                
+
                 updateParams.push(existingStudent[0].user_id);
-                
+
                 await executeQuery(
                     `UPDATE users SET ${updateFields.join(', ')} WHERE user_id = ?`,
                     updateParams
@@ -369,7 +378,7 @@ const deleteStudent = async (req, res) => {
 
         // Check if student exists
         const existingStudent = await executeQuery(
-            'SELECT course_id FROM students WHERE student_id = ?', 
+            'SELECT course_id FROM students WHERE student_id = ?',
             [studentId]
         );
 
@@ -399,9 +408,9 @@ const deleteStudent = async (req, res) => {
         } catch (error) {
             // Fallback to manual delete
             console.log('Stored procedure failed, using fallback method:', error.message);
-            
+
             const student = existingStudent[0];
-            
+
             // Check for course association if not force delete
             if (student.course_id && force !== 'true') {
                 return res.status(400).json({
